@@ -1,0 +1,26 @@
+[package]
+name = "hotel-order-backend"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+axum = { version = "0.7.9", features = ["ws"] }
+tokio = { version = "1.43.0", features = ["full"] }
+tower-http = { version = "0.6.2", features = ["cors"] }
+
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+
+uuid = { version = "1.11.0", features = ["v4"] }
+chrono = "0.4.39"
+futures-util = "0.3.31"
+
+argon2 = "0.5.3"
+jsonwebtoken = "9.3.1"
+rand = "0.8.5"
+
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
