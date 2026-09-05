@@ -1596,7 +1596,7 @@ async fn main() {
 
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "hotel.db".to_string());
     let client_origin =
-        std::env::var("CLIENT_ORIGIN").unwrap_or_else(|_| "http://0.0.0.0:9999".to_string());
+        std::env::var("CLIENT_ORIGIN").unwrap_or_else(|_| "*".to_string());
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
         tracing::warn!("JWT_SECRET not set — using an insecure default. Set it in production!");
         "dev-secret-change-me".to_string()
