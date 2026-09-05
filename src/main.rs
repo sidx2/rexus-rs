@@ -205,6 +205,8 @@ fn init_db(conn: &Connection) -> rusqlite::Result<()> {
             category    TEXT NOT NULL,
             name        TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
+            image       TEXT NOT NULL DEFAULT '',
+            portion     TEXT NOT NULL DEFAULT '',
             price       REAL NOT NULL,
             tags        TEXT NOT NULL DEFAULT '[]',
             sort_order  INTEGER NOT NULL DEFAULT 0
@@ -300,11 +302,13 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
         table_ids.push(id);
     }
 
-    let menu: [(&str, &str, &str, f64, &str); 6] = [
+    let menu: [(&str, &str, &str, &str, &str, f64, &str); 6] = [
         (
             "starters",
             "Burrata & Heirloom Tomato",
             "Creamy burrata, heirloom tomatoes, basil oil, aged balsamic.",
+            "",
+            "",
             16.0,
             r#"["veg","popular"]"#,
         ),
@@ -312,6 +316,8 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
             "starters",
             "Soup of the Day",
             "Ask your server for today's selection.",
+            "",
+            "",
             11.0,
             r#"["veg"]"#,
         ),
@@ -319,6 +325,8 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
             "mains",
             "Grilled Ribeye",
             "14oz, chimichurri, triple-cooked fries.",
+            "",
+            "",
             46.0,
             r#"["popular"]"#,
         ),
@@ -326,6 +334,8 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
             "mains",
             "Wild Mushroom Risotto",
             "Truffle oil, aged parmesan, wild arugula.",
+            "",
+            "",
             24.0,
             r#"["veg"]"#,
         ),
@@ -333,6 +343,8 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
             "desserts",
             "Chocolate Fondant",
             "Vanilla bean ice cream, salted caramel.",
+            "",
+            "",
             12.0,
             r#"["popular"]"#,
         ),
@@ -340,17 +352,19 @@ fn seed_demo_data(conn: &Connection, client_origin: &str) -> rusqlite::Result<()
             "drinks",
             "Old Fashioned",
             "Bourbon, bitters, orange oil.",
+            "",
+            "",
             17.0,
             r#"["popular"]"#,
         ),
     ];
     let mut item_ids: Vec<(String, String, f64)> = Vec::new();
-    for (i, (cat, name, desc, price, tags)) in menu.iter().enumerate() {
+    for (i, (cat, name, desc, img, portion, price, tags)) in menu.iter().enumerate() {
         let id = Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO menu_items (id, org_id, category, name, description, price, tags, sort_order)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![id, org_id, cat, name, desc, price, tags, i as i64],
+            "INSERT INTO menu_items (id, org_id, category, name, description, image, portion, price, tags, sort_order)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8, ?9, ?10)",
+            params![id, org_id, cat, name, desc, img, portion, price, tags, i as i64],
         )?;
         item_ids.push((id, name.to_string(), *price));
     }
@@ -553,6 +567,8 @@ struct MenuItemOut {
     category: String,
     name: String,
     description: String,
+    image: String,
+    portion: String,
     price: f64,
     tags: Vec<String>,
 }
@@ -565,6 +581,8 @@ fn menu_item_from_row(row: &Row) -> rusqlite::Result<MenuItemOut> {
         category: row.get("category")?,
         name: row.get("name")?,
         description: row.get("description")?,
+        image: row.get("image")?,
+        portion: row.get("portion")?,
         price: row.get("price")?,
         tags,
     })
@@ -1021,6 +1039,10 @@ struct MenuItemIn {
     name: String,
     #[serde(default)]
     description: String,
+    #[serde(default)]
+    image: String,
+    #[serde(default)]
+    portion: String,
     price: f64,
     #[serde(default)]
     tags: Vec<String>,
@@ -1043,9 +1065,9 @@ async fn save_menu(
             let id = item.id.unwrap_or_else(|| Uuid::new_v4().to_string());
             let tags_json = serde_json::to_string(&item.tags).unwrap_or_else(|_| "[]".to_string());
             tx.execute(
-                "INSERT INTO menu_items (id, org_id, category, name, description, price, tags, sort_order)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                params![id, org_id, item.category, item.name, item.description, item.price, tags_json, i as i64],
+                "INSERT INTO menu_items (id, org_id, category, name, description, image, portion, price, tags, sort_order)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![id, org_id, item.category, item.name, item.description, item.image, item.portion, item.price, tags_json, i as i64],
             )?;
         }
         tx.commit()
@@ -1072,9 +1094,9 @@ async fn create_menu_item(
             |r| r.get(0),
         )?;
         conn.execute(
-            "INSERT INTO menu_items (id, org_id, category, name, description, price, tags, sort_order)
+            "INSERT INTO menu_items (id, org_id, category, name, description, image, portion, price, tags, sort_order)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![id, org_id, item.category, item.name, item.description, item.price, tags_json, next_sort],
+            params![id, org_id, item.category, item.name, item.description, item.image, item.portion, item.price, tags_json, next_sort],
         )?;
         conn.query_row("SELECT * FROM menu_items WHERE id = ?1", params![id], menu_item_from_row)
     })
@@ -1093,12 +1115,14 @@ async fn update_menu_item(
     let updated = db_call(&state, move |conn| {
         let tags_json = serde_json::to_string(&item.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "UPDATE menu_items SET category=?1, name=?2, description=?3, price=?4, tags=?5
-             WHERE id=?6 AND org_id=?7",
+            "UPDATE menu_items SET category=?1, name=?2, description=?3, image=?4, portion=?5, price=?6, tags=?7
+            WHERE id=?8 AND org_id=?9",
             params![
                 item.category,
                 item.name,
                 item.description,
+                item.image,
+                item.portion,
                 item.price,
                 tags_json,
                 item_id,
