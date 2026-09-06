@@ -948,10 +948,10 @@ async fn create_table(
         return Err(AppError::bad_request("table name is required"));
     }
 
-    let client_origin = state.client_origin.clone();
+    let _client_origin = state.client_origin.clone();
     let table = db_call(&state, move |conn| {
         let id = Uuid::new_v4().to_string();
-        let qr_value = format!("{}?orgId={}&tableId={}", client_origin, org_id, id);
+        let qr_value = format!("{}?orgId={}&tableId={}", "https://sidx2.github.io/rexus-client/", org_id, id);
         conn.execute(
             "INSERT INTO tables (id, org_id, name, seats, qr_value, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
             params![id, org_id, body.name.trim(), body.seats.max(1), qr_value, now_ms()],
