@@ -29,14 +29,9 @@ use std::{
 };
 
 use axum::{
-    Json, Router, async_trait,
-    extract::{
-        FromRef, FromRequestParts, Path, Query, State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
-    },
-    http::{StatusCode, request::Parts},
-    response::{IntoResponse, Response},
-    routing::{get, patch, post, put},
+    Json, Router, async_trait, extract::{
+        DefaultBodyLimit, FromRef, FromRequestParts, Path, Query, State, ws::{Message, WebSocket, WebSocketUpgrade},
+    }, http::{StatusCode, request::Parts}, response::{IntoResponse, Response}, routing::{get, patch, post, put},
 };
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
@@ -51,6 +46,8 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+
+const MAX_BODY_SIZE: usize = 1 << 30; // 1 GiB
 
 // =========================================================================
 // Error type
@@ -1549,6 +1546,7 @@ async fn health() -> &'static str {
 
 fn build_router(state: SharedState) -> Router {
     Router::new()
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .route("/health", get(health))
         // --- auth ---
         .route("/api/auth/register", post(register))
