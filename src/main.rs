@@ -1156,7 +1156,7 @@ async fn delete_menu_item(
 // Order handlers
 // =========================================================================
 
-const TAX_RATE: f64 = 0.08;
+const TAX_RATE: f64 = 0.0;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1355,7 +1355,7 @@ struct UpdateStatusBody {
     status: String,
 }
 
-const VALID_STATUSES: [&str; 4] = ["new", "preparing", "ready", "served"];
+const VALID_STATUSES: [&str; 2] = ["new", "paid"];
 
 async fn update_order_status(
     State(state): State<SharedState>,
@@ -1366,7 +1366,7 @@ async fn update_order_status(
     ensure_own_org(&auth, &org_id)?;
     if !VALID_STATUSES.contains(&body.status.as_str()) {
         return Err(AppError::bad_request(
-            "status must be one of new, preparing, ready, served",
+            "status must be one of new, paid",
         ));
     }
 
