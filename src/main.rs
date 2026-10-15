@@ -1264,7 +1264,7 @@ async fn table_orders(
 
     let orders = db_call(&state, move |conn| {
         let sql = if pending_only {
-            "SELECT id FROM orders WHERE org_id = ?1 AND table_id = ?2 AND status != 'served' ORDER BY created_at DESC"
+            "SELECT id FROM orders WHERE org_id = ?1 AND table_id = ?2 AND status != 'paid' ORDER BY created_at DESC"
         } else {
             "SELECT id FROM orders WHERE org_id = ?1 AND table_id = ?2 ORDER BY created_at DESC"
         };
