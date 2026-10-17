@@ -1546,7 +1546,6 @@ async fn health() -> &'static str {
 
 fn build_router(state: SharedState) -> Router {
     Router::new()
-        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .route("/health", get(health))
         // --- auth ---
         .route("/api/auth/register", post(register))
@@ -1585,6 +1584,7 @@ fn build_router(state: SharedState) -> Router {
         // --- realtime ---
         .route("/ws/orders", get(ws_orders))
         .layer(CorsLayer::permissive()) // tighten to your real origins in production
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
 
