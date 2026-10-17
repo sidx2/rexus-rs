@@ -1258,17 +1258,13 @@ struct PendingQuery {
 async fn table_orders(
     State(state): State<SharedState>,
     Path((org_id, table_id)): Path<(String, String)>,
-    Query(q): Query<PendingQuery>,
+    Query(_q): Query<PendingQuery>,
 ) -> Result<Json<Vec<OrderOut>>, AppError> {
-    let pending_only = q.status.as_deref() == Some("pending");
-
     let orders = db_call(&state, move |conn| {
-        let sql = if pending_only {
+        // Always filter out paid orders directly in the SQL query
+        let mut stmt = conn.prepare(
             "SELECT id FROM orders WHERE org_id = ?1 AND table_id = ?2 AND status != 'paid' ORDER BY created_at DESC"
-        } else {
-            "SELECT id FROM orders WHERE org_id = ?1 AND table_id = ?2 ORDER BY created_at DESC"
-        };
-        let mut stmt = conn.prepare(sql)?;
+        )?;
         let ids: Vec<String> = stmt
             .query_map(params![org_id, table_id], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<_>>()?;
@@ -1279,7 +1275,6 @@ async fn table_orders(
     .await?;
     Ok(Json(orders))
 }
-
 #[derive(Deserialize)]
 struct AdminOrdersQuery {
     #[allow(dead_code)]
