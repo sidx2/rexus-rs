@@ -1,0 +1,65 @@
+
+name: Build and Deploy Rexus
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build application
+        run: cargo build --release
+
+      - name: Configure SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload binary
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            target/release/hotel-order-backend \
+            "$EC2_USER@$EC2_HOST:/tmp/hotel-order-backend.new"
+
+      - name: Restart application
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            "$EC2_USER@$EC2_HOST" 'bash -s' <<'REMOTE'
+          set -e
+          cd /home/ubuntu/rexus
+
+          cp hotel-order-backend hotel-order-backend.backup
+          install -m 755 /tmp/hotel-order-backend.new hotel-order-backend
+          rm /tmp/hotel-order-backend.new
+
+          tmux kill-session -t rexus-app 2>/dev/null || true
+          tmux new-session -d -s rexus-app \
+            "cd /home/ubuntu/rexus && exec ./hotel-order-backend"
+
+          echo "Rexus deployment successful"
+          REMOTE
