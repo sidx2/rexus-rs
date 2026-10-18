@@ -1,65 +1,86 @@
-
-name: Build and Deploy Rexus
+name: Deploy Rust Backend to AWS
 
 on:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: read
+    branches: [ main ]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout your code from GitHub
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      # 2. Set up Rust toolchain and caching for fast builds
+      - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build application
+      - name: Cache cargo registry & build
+        uses: Swatinem/rust-cache@v2
+
+      # 3. Compile the Rust binary in release mode (optimized)
+      - name: Build release binary
         run: cargo build --release
 
-      - name: Configure SSH
-        env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+      # 4. Deploy the binary to AWS EC2 via SSH/SCP
+      - name: Deploy to AWS EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 3.27.4.171
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd ~/rexus
+            
+            # Check if a backup already exists, clean old ones if needed
+            rm -f hotel-order-backend.backup
+            
+            # If binary is running, we copy to a temp name first
+            # (We will upload via scp in the step below, or let scp handle it)
+            
+          # Alternatively, use appleboy/scp-action to transfer the file first:
+      
+      - name: Copy binary via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 3.27.4.171
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: "target/release/hotel-order-backend"
+          target: "~/rexus/"
+          strip_components: 2  # This flattens target/release/ to just drop hotel-order-backend into ~/rexus/
 
-      - name: Upload binary
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          scp -i ~/.ssh/deploy_key \
-            target/release/hotel-order-backend \
-            "$EC2_USER@$EC2_HOST:/tmp/hotel-order-backend.new"
-
-      - name: Restart application
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          ssh -i ~/.ssh/deploy_key \
-            "$EC2_USER@$EC2_HOST" 'bash -s' <<'REMOTE'
-          set -e
-          cd /home/ubuntu/rexus
-
-          cp hotel-order-backend hotel-order-backend.backup
-          install -m 755 /tmp/hotel-order-backend.new hotel-order-backend
-          rm /tmp/hotel-order-backend.new
-
-          tmux kill-session -t rexus-app 2>/dev/null || true
-          tmux new-session -d -s rexus-app \
-            "cd /home/ubuntu/rexus && exec ./hotel-order-backend"
-
-          echo "Rexus deployment successful"
-          REMOTE
+      # 5. Restart the application safely on the server
+      - name: Restart application on AWS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 3.27.4.171
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd ~/rexus
+            
+            # Backup current running binary safely
+            if [ -f hotel-order-backend ]; then
+              mv hotel-order-backend hotel-order-backend.backup
+            fi
+            
+            # Move the newly uploaded release file into place
+            # (Depending on scp output location, ensure it's named correctly)
+            chmod +x hotel-order-backend
+            
+            # Restart the tmux process gracefully
+            # Send Ctrl+C to existing session if active, or start a new one
+            tmux send-keys -t backend C-c || true
+            sleep 1
+            
+            # If tmux session doesn't exist, create it; otherwise just run it
+            if ! tmux has-session -t backend 2>/dev/null; then
+              tmux new-session -d -s backend "./hotel-order-backend > output.log 2>&1"
+            else
+              tmux send-keys -t backend "./hotel-order-backend > output.log 2>&1" C-m
+            fi
+            
+            echo "Deployment completed successfully!"
