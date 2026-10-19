@@ -21,10 +21,10 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      # 1. Create the private key file securely on the runner
+      # 1. Safely decode the Base64 secret into a valid private key file
       - name: Setup SSH Key
         run: |
-          echo "${{ secrets.AWS_SSH_KEY_RAW }}" > private_key.pem
+          echo "${{ secrets.AWS_SSH_KEY_B64 }}" | base64 -d > private_key.pem
           chmod 600 private_key.pem
 
       # 2. Prepare remote directory & clean backup via native SSH
@@ -33,7 +33,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 "mkdir -p ~/rexus && cd ~/rexus && rm -f hotel-order-backend.backup"
 
       # 3. Copy binary via native SCP
-      - name: Copy binary via SCP
+      - name: Copy binary via native SCP
         run: |
           scp -o StrictHostKeyChecking=no -i private_key.pem target/release/hotel-order-backend ubuntu@3.27.4.171:~/rexus/
 
