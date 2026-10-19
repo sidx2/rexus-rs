@@ -30,7 +30,7 @@ jobs:
       # 2. Prepare remote directory & clean backup via native SSH
       - name: Prepare Remote Environment
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 "mkdir -p ~/rexus && cd ~/rexus && rm -f hotel-order-backend.backup"
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 "mkdir -p ~/rexus && rm -f ~/rexus/hotel-order-backend.backup"
 
       # 3. Copy binary via native SCP
       - name: Copy binary via native SCP
