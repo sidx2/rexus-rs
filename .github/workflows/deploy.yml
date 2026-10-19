@@ -21,54 +21,56 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      # 1. Prepare target directory and clean old backups on AWS EC2
+      # 1. Safely write the SSH key to a file directly on the runner filesystem
+      - name: Setup SSH Key File
+        run: |
+          echo "${{ secrets.AWS_SSH_KEY_RAW }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      # 2. Prepare remote environment using the local file path
       - name: Prepare Remote Environment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
           port: 22
           script: |
             mkdir -p ~/rexus
             cd ~/rexus
             rm -f hotel-order-backend.backup
 
-      # 2. Copy the compiled binary via SCP
+      # 3. Copy binary via SCP using the local file path
       - name: Copy binary via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
           source: "target/release/hotel-order-backend"
           target: "~/rexus/"
           strip_components: 2
 
-      # 3. Restart the application safely on the server
+      # 4. Restart application safely
       - name: Restart application on AWS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
           port: 22
           script: |
             cd ~/rexus
             
-            # Backup current running binary safely
             if [ -f hotel-order-backend ]; then
               mv hotel-order-backend hotel-order-backend.backup
             fi
             
-            # Make the binary executable
             chmod +x hotel-order-backend
             
-            # Restart the tmux process gracefully
             tmux send-keys -t backend C-c || true
             sleep 1
             
-            # If tmux session doesn't exist, create it; otherwise run it
             if ! tmux has-session -t backend 2>/dev/null; then
               tmux new-session -d -s backend "./hotel-order-backend > output.log 2>&1"
             else
