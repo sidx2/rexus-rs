@@ -21,43 +21,37 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      # 1. Safely write the SSH key to a file directly on the runner filesystem
-      - name: Setup SSH Key File
-        run: |
-          echo "${{ secrets.AWS_SSH_KEY_RAW }}" > private_key.pem
-          chmod 600 private_key.pem
-
-      # 2. Prepare remote environment using the local file path
+      # 1. Prepare Remote Environment
       - name: Prepare Remote Environment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY_RAW }}
           port: 22
           script: |
             mkdir -p ~/rexus
             cd ~/rexus
             rm -f hotel-order-backend.backup
 
-      # 3. Copy binary via SCP using the local file path
+      # 2. Copy binary via SCP
       - name: Copy binary via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY_RAW }}
           source: "target/release/hotel-order-backend"
           target: "~/rexus/"
           strip_components: 2
 
-      # 4. Restart application safely
+      # 3. Restart application safely
       - name: Restart application on AWS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY_RAW }}
           port: 22
           script: |
             cd ~/rexus
