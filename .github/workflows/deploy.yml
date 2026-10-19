@@ -18,40 +18,50 @@ jobs:
       - name: Cache cargo registry & build
         uses: Swatinem/rust-cache@v2
 
+      # 3. Compile the Rust binary in release mode (optimized)
       - name: Build release binary
         run: cargo build --release
 
-      # 1. Safely decode the Base64 secret into a valid private key file
+      # 4. Safely decode the clean Base64 secret into a valid private key file
       - name: Setup SSH Key
         run: |
           echo "${{ secrets.AWS_SSH_KEY_B64 }}" | base64 -d > private_key.pem
           chmod 600 private_key.pem
 
-      # 2. Prepare remote directory & clean backup via native SSH
+      # 5. Fix permissions, stop running process, & ensure directory is writable
       - name: Prepare Remote Environment
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 "mkdir -p ~/rexus && rm -f ~/rexus/hotel-order-backend.backup"
-
-      # 3. Copy binary via native SCP
-      - name: Copy binary via native SCP
-        run: |
-          scp -o StrictHostKeyChecking=no -i private_key.pem target/release/hotel-order-backend ubuntu@3.27.4.171:~/rexus/
-
-      # 4. Restart application safely via native SSH
-      - name: Restart application on AWS
-        run: |
           ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 << 'EOF'
-            cd ~/rexus
+            # Ensure correct directory permissions and ownership
+            mkdir -p /home/ubuntu/rexus
+            chmod 755 /home/ubuntu/rexus
             
-            if [ -f hotel-order-backend ]; then
-              mv hotel-order-backend hotel-order-backend.backup
-            fi
+            cd /home/ubuntu/rexus
             
-            chmod +x hotel-order-backend
-            
+            # Stop any active tmux session gracefully
             tmux send-keys -t backend C-c || true
             sleep 1
             
+            # Backup current running binary safely if it exists
+            if [ -f hotel-order-backend ]; then
+              mv hotel-order-backend hotel-order-backend.backup
+            fi
+          EOF
+
+      # 6. Copy binary via native SCP using absolute path
+      - name: Copy binary via native SCP
+        run: |
+          scp -o StrictHostKeyChecking=no -i private_key.pem target/release/hotel-order-backend ubuntu@3.27.4.171:/home/ubuntu/rexus/
+
+      # 7. Start application safely via native SSH
+      - name: Restart application on AWS
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 << 'EOF'
+            cd /home/ubuntu/rexus
+            
+            chmod +x hotel-order-backend
+            
+            # If tmux session doesn't exist, create it; otherwise run it
             if ! tmux has-session -t backend 2>/dev/null; then
               tmux new-session -d -s backend "./hotel-order-backend > output.log 2>&1"
             else
