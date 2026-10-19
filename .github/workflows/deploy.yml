@@ -24,41 +24,44 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      # 4. Deploy the binary to AWS EC2 via SSH/SCP
-      - name: Deploy to AWS EC2
+      # 4. Decode the Base64 SSH Key into a secure local file
+      - name: Decode SSH Key
+        run: |
+          echo "${{ secrets.AWS_SSH_KEY }}" | base64 -d > private_key.pem
+          chmod 600 private_key.pem
+
+      # 5. Prepare target directory and clean old backups on AWS EC2
+      - name: Prepare Remote Environment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
+          port: 22
           script: |
+            mkdir -p ~/rexus
             cd ~/rexus
-            
-            # Check if a backup already exists, clean old ones if needed
             rm -f hotel-order-backend.backup
-            
-            # If binary is running, we copy to a temp name first
-            # (We will upload via scp in the step below, or let scp handle it)
-            
-          # Alternatively, use appleboy/scp-action to transfer the file first:
-      
+
+      # 6. Copy the compiled binary via SCP using the key file path
       - name: Copy binary via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
           source: "target/release/hotel-order-backend"
           target: "~/rexus/"
-          strip_components: 2  # This flattens target/release/ to just drop hotel-order-backend into ~/rexus/
+          strip_components: 2
 
-      # 5. Restart the application safely on the server
+      # 7. Restart the application safely on the server
       - name: Restart application on AWS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY }}
+          key_path: private_key.pem
+          port: 22
           script: |
             cd ~/rexus
             
@@ -67,16 +70,14 @@ jobs:
               mv hotel-order-backend hotel-order-backend.backup
             fi
             
-            # Move the newly uploaded release file into place
-            # (Depending on scp output location, ensure it's named correctly)
+            # Make the binary executable
             chmod +x hotel-order-backend
             
             # Restart the tmux process gracefully
-            # Send Ctrl+C to existing session if active, or start a new one
             tmux send-keys -t backend C-c || true
             sleep 1
             
-            # If tmux session doesn't exist, create it; otherwise just run it
+            # If tmux session doesn't exist, create it; otherwise run it
             if ! tmux has-session -t backend 2>/dev/null; then
               tmux new-session -d -s backend "./hotel-order-backend > output.log 2>&1"
             else
