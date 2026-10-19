@@ -9,58 +9,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout your code from GitHub
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Set up Rust toolchain and caching for fast builds
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry & build
         uses: Swatinem/rust-cache@v2
 
-      # 3. Compile the Rust binary in release mode (optimized)
       - name: Build release binary
         run: cargo build --release
 
-      # 4. Decode the Base64 SSH Key into a secure local file
-      - name: Decode SSH Key
-        run: |
-          echo "${{ secrets.AWS_SSH_KEY }}" | base64 -d > private_key.pem
-          chmod 600 private_key.pem
-
-      # 5. Prepare target directory and clean old backups on AWS EC2
+      # 1. Prepare target directory and clean old backups on AWS EC2
       - name: Prepare Remote Environment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY }}
           port: 22
           script: |
             mkdir -p ~/rexus
             cd ~/rexus
             rm -f hotel-order-backend.backup
 
-      # 6. Copy the compiled binary via SCP using the key file path
+      # 2. Copy the compiled binary via SCP
       - name: Copy binary via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY }}
           source: "target/release/hotel-order-backend"
           target: "~/rexus/"
           strip_components: 2
 
-      # 7. Restart the application safely on the server
+      # 3. Restart the application safely on the server
       - name: Restart application on AWS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.4.171
           username: ubuntu
-          key_path: private_key.pem
+          key: ${{ secrets.AWS_SSH_KEY }}
           port: 22
           script: |
             cd ~/rexus
