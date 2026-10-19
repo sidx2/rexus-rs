@@ -21,39 +21,26 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      # 1. Prepare Remote Environment
+      # 1. Create the private key file securely on the runner
+      - name: Setup SSH Key
+        run: |
+          echo "${{ secrets.AWS_SSH_KEY_RAW }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      # 2. Prepare remote directory & clean backup via native SSH
       - name: Prepare Remote Environment
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 3.27.4.171
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY_RAW }}
-          port: 22
-          script: |
-            mkdir -p ~/rexus
-            cd ~/rexus
-            rm -f hotel-order-backend.backup
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 "mkdir -p ~/rexus && cd ~/rexus && rm -f hotel-order-backend.backup"
 
-      # 2. Copy binary via SCP
+      # 3. Copy binary via native SCP
       - name: Copy binary via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 3.27.4.171
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY_RAW }}
-          source: "target/release/hotel-order-backend"
-          target: "~/rexus/"
-          strip_components: 2
+        run: |
+          scp -o StrictHostKeyChecking=no -i private_key.pem target/release/hotel-order-backend ubuntu@3.27.4.171:~/rexus/
 
-      # 3. Restart application safely
+      # 4. Restart application safely via native SSH
       - name: Restart application on AWS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 3.27.4.171
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY_RAW }}
-          port: 22
-          script: |
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@3.27.4.171 << 'EOF'
             cd ~/rexus
             
             if [ -f hotel-order-backend ]; then
@@ -72,3 +59,4 @@ jobs:
             fi
             
             echo "Deployment completed successfully!"
+          EOF
