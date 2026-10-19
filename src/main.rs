@@ -965,6 +965,7 @@ struct UpdateTableBody {
     seats: Option<i64>,
 }
 
+
 async fn update_table(
     State(state): State<SharedState>,
     Path((org_id, table_id)): Path<(String, String)>,
